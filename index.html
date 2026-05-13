@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>sysd_ui</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow-a"></div>
+  <div class="bg-glow bg-glow-b"></div>
+
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div>
+          <div class="brand-title">sysd_ui</div>
+          <div class="brand-subtitle">systemd services control room</div>
+        </div>
+      </div>
+
+      <section class="sidebar-panel">
+        <div class="panel-label">Host</div>
+        <div class="host-card">
+          <div class="host-row">
+            <div>
+              <div class="host-name" id="host-name">devbox-01</div>
+              <div class="host-meta" id="host-meta">Ubuntu 24.04 LTS · PID 1: systemd 255</div>
+            </div>
+            <div class="host-badge online">online</div>
+          </div>
+          <div class="host-metrics">
+            <div>
+              <span id="metric-uptime">12d 04h</span>
+              <small>uptime</small>
+            </div>
+            <div>
+              <span id="metric-jobs">3</span>
+              <small>jobs queued</small>
+            </div>
+            <div>
+              <span id="metric-failed">2</span>
+              <small>failed</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="panel-label">Targets</div>
+        <div class="target-list" id="target-list"></div>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="panel-label">Tips</div>
+        <div class="tip-card">
+          <p>Use search to narrow the unit list, then select a service to start, stop, restart, enable, or mask it.</p>
+          <p class="tip-note">This front end is self-contained and can be wired to a backend API later.</p>
+        </div>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">SYSTEMD SERVICES</div>
+          <h1>Manage units without dropping into a terminal</h1>
+        </div>
+
+        <div class="topbar-actions">
+          <label class="searchbox">
+            <span>⌕</span>
+            <input id="search" type="search" placeholder="Search services, descriptions, paths, tags" />
+          </label>
+          <button class="ghost-btn" id="refresh-btn" type="button">Refresh</button>
+          <button class="primary-btn" id="reload-daemon-btn" type="button">Daemon reload</button>
+        </div>
+      </header>
+
+      <section class="stats-grid" id="stats-grid"></section>
+
+      <section class="controls-row">
+        <div class="chip-group" id="status-filters"></div>
+        <div class="chip-group">
+          <button class="chip active" data-sort="name">Name</button>
+          <button class="chip" data-sort="status">Status</button>
+          <button class="chip" data-sort="uptime">Uptime</button>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <div class="service-panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-label">Units</div>
+              <h2 id="list-title">All services</h2>
+            </div>
+            <div class="panel-head-meta" id="list-meta">0 units</div>
+          </div>
+          <div class="service-list" id="service-list"></div>
+        </div>
+
+        <aside class="detail-panel">
+          <div class="detail-hero" id="detail-hero">
+            <div>
+              <div class="panel-label">Selection</div>
+              <h2 id="detail-name">Pick a service</h2>
+              <p id="detail-description">Select a unit from the list to inspect its state and perform actions.</p>
+            </div>
+            <div class="detail-status" id="detail-status">idle</div>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-grid" id="detail-grid"></div>
+          </div>
+
+          <div class="detail-section">
+            <div class="section-title">Actions</div>
+            <div class="action-row" id="action-row"></div>
+          </div>
+
+          <div class="detail-section">
+            <div class="section-title">Dependencies</div>
+            <div class="dependency-stack" id="dependency-stack"></div>
+          </div>
+
+          <div class="detail-section">
+            <div class="section-title">Recent journal</div>
+            <div class="journal" id="journal"></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="footer-strip">
+        <div>
+          <span class="footer-label">Connection</span>
+          <strong id="connection-state">Local preview mode</strong>
+        </div>
+        <div>
+          <span class="footer-label">Last sync</span>
+          <strong id="last-sync">Just now</strong>
+        </div>
+        <div>
+          <span class="footer-label">Active unit</span>
+          <strong id="active-unit">none</strong>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <template id="service-card-template">
+    <article class="service-card">
+      <div class="service-card-top">
+        <div class="service-icon"></div>
+        <div class="service-meta">
+          <div class="service-name"></div>
+          <div class="service-desc"></div>
+        </div>
+        <div class="service-pin"></div>
+      </div>
+      <div class="service-flags"></div>
+      <div class="service-footer">
+        <div class="service-state"></div>
+        <div class="service-time"></div>
+      </div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
