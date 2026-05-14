@@ -1,30 +1,135 @@
 # sysd_ui
 
-Native GTK desktop UI concept for managing `systemd` services.
+Web-based systemd service manager. Manage, edit, create and monitor systemd units from a browser or a native desktop window.
 
-## What is included
-
-- Left-side host and target rail
-- Search, status filtering, and sorting for service units
-- Service list with state chips and runtime metadata
-- Editable unit properties for common directives like `Description`, `ExecStart`, `WorkingDirectory`, `User`, `Group`, `Environment`, and `Restart`
-- Property suggestions from systemd directive names and local executable discovery
-- Detail panel with actions like start, stop, restart, and journal viewing
-- Recent journal and dependency panels
-- No embedded browser or webview
-
-## Run
+## Install
 
 ```bash
-python3 run.py
+pip install -r requirements.txt
+# file picker support (browser mode):
+sudo apt install zenity
 ```
 
-or:
+## Run modes
+
+### Browser mode
+
+Starts an HTTP server; open it in any browser.
 
 ```bash
-python3 main.py
+python run_web.py                         # http://127.0.0.1:8000
+python run_web.py --host 0.0.0.0 --port 8080
 ```
 
-## Notes
+Protected by login when `.env` credentials are set (see [Auth](#auth)).
 
-The current build talks directly to the local `systemctl` and `journalctl` commands from the GTK app, so there is no browser layer. Mutating actions retry through `pkexec` when direct access is denied, which lets polkit handle authorization in the desktop session.
+### Desktop mode
+
+Wraps the same server in a Chromium `--app` window — no tabs, no address bar.
+Requires `chromium-browser` or `google-chrome`. Auth is skipped automatically.
+
+```bash
+python run_desktop.py
+```
+
+---
+
+## Auth
+
+Create `.env` in the project root (browser mode only — desktop skips auth):
+
+```env
+SYSD_UI_USER=admin
+SYSD_UI_PASSWORD=yourpassword
+```
+
+Without `.env` the app runs unauthenticated.
+Add `SYSD_UI_SECRET=<random-hex>` to pin the session signing key across restarts.
+
+---
+
+## Workflows
+
+### View services
+
+The sidebar lists all systemd units grouped by type (Services, Timers, Sockets, …).
+Pinned units appear at the top in a **Pinned** section.
+
+- **Search** — filter by name, description, path, status, tags
+- **Class filter chips** — All / Custom / App / System / Core
+- **★ Favorites** — toggle to show pinned units only
+- **Star button** on each row — pin/unpin without opening the unit
+
+### Service actions
+
+Select a unit to open the detail panel. Buttons mirror systemd state:
+
+| State | Buttons |
+|---|---|
+| active | Stop · Restart |
+| failed | Restart · Start |
+| inactive | Start |
+| any | Enable/Disable · Pin/Unpin · Backup · Restore backup · Mask/Unmask · Delete |
+
+### Tabs
+
+**Info** — runtime metadata: PID, memory, CPU, uptime, load state, dependencies.
+
+**Journal** — last 100 log lines with timestamps.
+
+**Editor** — full unit file editor (see below).
+
+### Editor
+
+Unit file parsed into collapsible `[Section]` blocks.
+
+- **Common fields** (Description, ExecStart, User, …) shown in cyan — always present
+- **Other directives** from the file appear in their own section
+- **+ Add directive** — append any directive to a section
+- **+ Add section** — add a standard systemd section not yet present
+- **Browse `…` button** — opens a native file picker (zenity/kdialog) next to path and exec fields
+- **Autocomplete** — suggestions on all fields; directive keys filtered to the current section; unit dependency fields validate against running units
+- **ExecStart validation** — checks executable exists and is runnable (live, debounced)
+- **Path field validation** — checks path exists on disk (live, debounced)
+- **Dirty indicator** — `● Modified` / `● Saved` in the footer
+
+**Save modes** (chosen automatically by unit location):
+
+| Unit location | Button label | Behaviour |
+|---|---|---|
+| `/etc/systemd/system/` | Save unit | Writes file directly |
+| `/usr/lib/systemd/system/` | Save vendor unit | Backup first, then overwrite |
+| Other | Save override | Writes a drop-in override |
+
+Footer: **Save** · **Backup** · **Restore backup** · **Reload from disk**
+
+### Create a new unit
+
+Click **+ New unit** in the sidebar.
+
+1. Type the unit name — suffix (`.service`, `.timer`, `.socket`, …) determines visible sections
+2. Fill in fields; **ExecStart is required**
+3. Set **WantedBy** to auto-enable on create
+4. Click **Create** — unit is saved, enabled if WantedBy set, pinned, and the editor opens
+
+### Daemon reload
+
+**Daemon reload** button in the header — runs `systemctl daemon-reload` and refreshes the list.
+
+---
+
+## File structure
+
+```
+run_web.py          # browser mode entry point
+run_desktop.py      # desktop (Chromium app) entry point
+.env                # credentials (do not commit)
+backend.py          # systemd backend (systemctl, journalctl, unit file I/O)
+services.py         # ServiceUnit dataclass
+suggestions.py      # directive lists, autocomplete data
+web/
+  app.py            # FastAPI application, all API routes
+  static/
+    index.html      # single-page UI
+    app.js          # all frontend logic
+```

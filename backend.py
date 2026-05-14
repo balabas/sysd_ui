@@ -8,6 +8,9 @@ from pathlib import Path
 
 from services import ServiceUnit, sample_services
 from properties import COMMON_FIELDS, section_for_key
+from suggestions import SUFFIX_TO_SECTION
+
+_SECTION_ORDER = ["Unit", "Service", "Socket", "Mount", "Automount", "Swap", "Path", "Timer", "Slice", "Install"]
 
 
 SERVICE_COLUMNS = [
@@ -99,6 +102,31 @@ class SystemdBackend:
             service = next((svc for svc in self._fallback if svc.name == name), None)
             return list(service.journal) if service else [("now", "No journal output available")]
 
+    def required_by(self, name: str) -> list[str]:
+        try:
+            output = self._run(
+                [
+                    "systemctl",
+                    "show",
+                    "--no-pager",
+                    "--property=RequiredBy,BoundBy",
+                    name,
+                ]
+            )
+            units: list[str] = []
+            for line in output.splitlines():
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key in {"RequiredBy", "BoundBy"}:
+                    for unit in value.split():
+                        unit = unit.strip()
+                        if unit:
+                            units.append(unit)
+            return sorted(set(units))
+        except Exception:
+            return []
+
     def start(self, name: str) -> None:
         self._run_systemctl(["start", name], privileged=True)
 
@@ -156,12 +184,12 @@ class SystemdBackend:
         data["OverridePath"] = self._override_path(name)
         return data
 
-    def read_extra_properties(self, name: str) -> list[tuple[str, str]]:
+    def read_unit_sections(self, name: str) -> dict[str, list[tuple[str, str]]]:
         try:
             output = self._run(["systemctl", "cat", name])
         except Exception:
-            return []
-        return self._parse_extra_unit_text(output)
+            return {}
+        return self._parse_unit_sections(output)
 
     def save_override(self, name: str, fields: dict[str, str], extra: list[tuple[str, str]]) -> None:
         content = self._render_override(fields, extra)
@@ -371,76 +399,70 @@ class SystemdBackend:
         known_suffixes = (".service", ".socket", ".timer", ".target", ".path", ".mount", ".scope", ".slice")
         return name if name.endswith(known_suffixes) else f"{name}.service"
 
-    def _render_service_unit(self, fields: dict[str, str], extra: list[tuple[str, str]]) -> str:
-        grouped: dict[str, list[str]] = {"Unit": [], "Service": [], "Install": []}
+    @staticmethod
+    def _grouped_sections() -> dict[str, list[str]]:
+        return {"Unit": [], "Install": []}
 
-        def add(key: str, value: str) -> None:
-            text = value.strip()
-            section = section_for_key(key)
-            if key == "Environment":
-                for entry in self._split_environment_values(text):
-                    grouped[section].append(f"Environment={entry}")
-                return
-            if not text:
-                return
-            grouped[section].append(f"{key}={text}")
+    def _render_grouped(self, grouped: dict[str, list[str]]) -> str:
+        in_order = set(_SECTION_ORDER)
+        ordered = [s for s in _SECTION_ORDER if s in grouped]
+        ordered += [s for s in grouped if s not in in_order]
+        parts: list[str] = []
+        for section in ordered:
+            if grouped.get(section):
+                parts.append(f"[{section}]")
+                parts.extend(grouped[section])
+                parts.append("")
+        return "\n".join(parts).rstrip() + "\n"
+
+    def _add_to_grouped(self, grouped: dict[str, list[str]], key: str, value: str, *, override_reset: bool = False) -> None:
+        text = value.strip()
+        section = section_for_key(key)
+        grouped.setdefault(section, [])
+        if key == "ExecStart" and override_reset:
+            if text:
+                grouped[section].append("ExecStart=")
+                grouped[section].append(f"ExecStart={text}")
+            return
+        if key == "Environment":
+            for entry in self._split_environment_values(text):
+                grouped[section].append(f"Environment={entry}")
+            return
+        if not text:
+            return
+        grouped[section].append(f"{key}={text}")
+
+    def _render_service_unit(self, fields: dict[str, str], extra: list[tuple[str, str]]) -> str:
+        grouped = self._grouped_sections()
 
         description = fields.get("Description", "").strip()
         if description:
             grouped["Unit"].append(f"Description={description}")
 
         if fields.get("ExecStart", "").strip():
-            grouped["Service"].append("Type=simple")
+            grouped.setdefault("Service", [])
 
         for key in ["ExecStart", "ExecReload", "ExecStop", "WorkingDirectory", "User", "Group", "Environment", "Restart"]:
-            add(key, fields.get(key, ""))
+            self._add_to_grouped(grouped, key, fields.get(key, ""))
 
         for key, value in extra:
-            add(key, value)
+            self._add_to_grouped(grouped, key, value)
 
         wanted_by = fields.get("WantedBy", "").strip()
         if wanted_by:
             grouped["Install"].append(f"WantedBy={wanted_by}")
 
-        parts: list[str] = []
-        for section in ["Unit", "Service", "Install"]:
-            if grouped[section]:
-                parts.append(f"[{section}]")
-                parts.extend(grouped[section])
-                parts.append("")
-        return "\n".join(parts).rstrip() + "\n"
+        return self._render_grouped(grouped)
 
     def _render_override(self, fields: dict[str, str], extra: list[tuple[str, str]]) -> str:
-        grouped: dict[str, list[str]] = {"Unit": [], "Service": [], "Install": []}
-
-        def add(key: str, value: str) -> None:
-            text = value.strip()
-            section = section_for_key(key)
-            if key == "ExecStart":
-                if text:
-                    grouped[section].append("ExecStart=")
-                    grouped[section].append(f"ExecStart={text}")
-                return
-            if key == "Environment":
-                for entry in self._split_environment_values(text):
-                    grouped[section].append(f"Environment={entry}")
-                return
-            if not text:
-                return
-            grouped[section].append(f"{key}={text}")
+        grouped = self._grouped_sections()
 
         for key in COMMON_FIELDS:
-            add(key, fields.get(key, ""))
+            self._add_to_grouped(grouped, key, fields.get(key, ""), override_reset=(key == "ExecStart"))
         for key, value in extra:
-            add(key, value)
+            self._add_to_grouped(grouped, key, value)
 
-        parts: list[str] = []
-        for section in ["Unit", "Service", "Install"]:
-            if grouped[section]:
-                parts.append(f"[{section}]")
-                parts.extend(grouped[section])
-                parts.append("")
-        return "\n".join(parts).rstrip() + "\n"
+        return self._render_grouped(grouped)
 
     def _split_environment_values(self, text: str) -> list[str]:
         values: list[str] = []
@@ -454,11 +476,22 @@ class SystemdBackend:
     def _fallback_copy(self) -> list[ServiceUnit]:
         return [self._decorate_service(replace(service), {}) for service in self._fallback]
 
+    _UNIT_SUFFIXES = (
+        ".service", ".socket", ".timer", ".target", ".path",
+        ".mount", ".automount", ".swap", ".slice", ".scope", ".device",
+    )
+
+    def _strip_unit_suffix(self, name: str) -> str:
+        for suffix in self._UNIT_SUFFIXES:
+            if name.endswith(suffix):
+                return name[: -len(suffix)]
+        return name
+
     def _blank_service(self, name: str, enabled_state: str) -> ServiceUnit:
         base = next((svc for svc in self._fallback if svc.name == name), None)
         if base is not None:
             return self._decorate_service(replace(base), {})
-        description = name.removesuffix(".service").replace("-", " ").replace("_", " ").title()
+        description = self._strip_unit_suffix(name).replace("-", " ").replace("_", " ").title()
         return self._decorate_service(
             ServiceUnit(
                 name=name,
@@ -487,7 +520,6 @@ class SystemdBackend:
             [
                 "systemctl",
                 "list-unit-files",
-                "--type=service",
                 "--all",
                 "--no-legend",
                 "--no-pager",
@@ -496,12 +528,13 @@ class SystemdBackend:
         )
         states: dict[str, str] = {}
         for line in output.splitlines():
-            parts = line.split(None, 1)
-            if len(parts) != 2:
+            parts = line.split()
+            if len(parts) < 2:
                 continue
-            name, enabled_state = parts
-            if name.endswith(".service"):
-                states[name] = enabled_state.strip()
+            name = parts[0].strip()
+            enabled_state = parts[1].strip()
+            if name:
+                states[name] = enabled_state
         return states
 
     def _list_units(self) -> dict[str, dict[str, str]]:
@@ -509,7 +542,6 @@ class SystemdBackend:
             [
                 "systemctl",
                 "list-units",
-                "--type=service",
                 "--all",
                 "--no-legend",
                 "--no-pager",
@@ -522,7 +554,7 @@ class SystemdBackend:
             if len(parts) < 5:
                 continue
             name, load_state, active_state, sub_state, description = parts
-            if not name.endswith(".service"):
+            if not name:
                 continue
             states[name] = {
                 "Id": name,
@@ -610,7 +642,13 @@ class SystemdBackend:
         local_path = service.path or self._local_unit_path(service.name)
         if local_path and not service.path:
             service = replace(service, path=local_path)
-        return replace(service, service_class=self._classify_service(service, record))
+        blob = service.search_blob
+        if not blob and service.path:
+            try:
+                blob = Path(service.path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                blob = ""
+        return replace(service, service_class=self._classify_service(service, record), search_blob=blob)
 
     def _local_unit_path(self, name: str) -> str:
         unit_name = self._normalize_unit_name(name)
@@ -706,24 +744,29 @@ class SystemdBackend:
             data[key].append(value.strip())
         return {key: "\n".join(values).strip() for key, values in data.items()}
 
-    def _parse_extra_unit_text(self, output: str) -> list[tuple[str, str]]:
-        extras: list[tuple[str, str]] = []
+    def _parse_unit_sections(self, output: str) -> dict[str, list[tuple[str, str]]]:
+        sections: dict[str, list[tuple[str, str]]] = {}
+        current_section = ""
         common = set(COMMON_FIELDS)
-        seen: set[tuple[str, str]] = set()
+        seen: set[tuple[str, str, str]] = set()
         for line in output.splitlines():
             stripped = line.strip()
-            if not stripped or stripped.startswith("#") or stripped.startswith("["):
+            if not stripped or stripped.startswith("#"):
                 continue
-            if "=" not in line:
+            if stripped.startswith("[") and stripped.endswith("]"):
+                current_section = stripped[1:-1]
+                sections.setdefault(current_section, [])
+                continue
+            if "=" not in line or not current_section:
                 continue
             key, value = line.split("=", 1)
             key = key.strip()
             value = value.strip()
             if not key or key in common:
                 continue
-            item = (key, value)
+            item = (current_section, key, value)
             if item in seen:
                 continue
             seen.add(item)
-            extras.append(item)
-        return extras
+            sections[current_section].append((key, value))
+        return sections

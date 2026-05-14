@@ -5,270 +5,304 @@ from functools import lru_cache
 from pathlib import Path
 
 
-SYSTEMD_DIRECTIVES = [
-    "Description",
-    "Documentation",
-    "Wants",
-    "Requires",
-    "Requisite",
-    "BindsTo",
-    "PartOf",
-    "Upholds",
-    "Conflicts",
-    "Before",
-    "After",
-    "OnFailure",
-    "OnSuccess",
-    "AssertPathExists",
-    "AssertPathIsDirectory",
-    "AssertPathIsSymbolicLink",
-    "AssertFileIsExecutable",
-    "ConditionPathExists",
-    "ConditionPathIsDirectory",
-    "ConditionPathIsSymbolicLink",
-    "ConditionFileIsExecutable",
-    "StartLimitIntervalSec",
-    "StartLimitBurst",
-    "StartLimitAction",
-    "StopWhenUnneeded",
-    "RefuseManualStart",
-    "RefuseManualStop",
-    "SourcePath",
-    "RequiresMountsFor",
-    "WantsMountsFor",
-    "Slice",
-    "Type",
-    "ExecStart",
-    "ExecStartPre",
-    "ExecStartPost",
-    "ExecReload",
-    "ExecStop",
-    "ExecStopPost",
-    "Restart",
-    "RestartSec",
-    "RestartSteps",
-    "RestartMaxDelaySec",
-    "TimeoutStartSec",
-    "TimeoutStopSec",
-    "TimeoutAbortSec",
-    "WorkingDirectory",
-    "RootDirectory",
-    "RootImage",
-    "User",
-    "Group",
-    "SupplementaryGroups",
-    "Environment",
-    "EnvironmentFile",
-    "PassEnvironment",
-    "UnsetEnvironment",
-    "UMask",
-    "ExecSearchPath",
-    "Nice",
-    "IOSchedulingClass",
-    "IOSchedulingPriority",
-    "CPUWeight",
-    "CPUQuota",
-    "MemoryMax",
-    "MemoryHigh",
-    "TasksMax",
-    "WantedBy",
-    "Also",
-    "Alias",
-    "DefaultInstance",
+# Primary data structure: section → directives.
+# A directive may appear in multiple sections (e.g. What in Mount and Swap).
+SECTION_DIRECTIVES: dict[str, list[str]] = {
+    "Unit": [
+        "Description", "Documentation",
+        "Wants", "Requires", "Requisite", "BindsTo", "PartOf", "Upholds",
+        "Conflicts", "Before", "After", "OnFailure", "OnSuccess",
+        "AssertPathExists", "AssertPathIsDirectory", "AssertPathIsSymbolicLink", "AssertFileIsExecutable",
+        "ConditionPathExists", "ConditionPathIsDirectory", "ConditionPathIsSymbolicLink",
+        "ConditionFileIsExecutable", "ConditionPathExistsGlob", "ConditionPathIsMountPoint",
+        "ConditionPathIsReadWrite", "ConditionDirectoryNotEmpty", "ConditionFileNotEmpty",
+        "ConditionUser", "ConditionGroup", "ConditionHost", "ConditionKernelCommandLine",
+        "ConditionVirtualization", "ConditionArchitecture", "ConditionACPower",
+        "ConditionNeedsUpdate", "ConditionFirstBoot",
+        "StartLimitIntervalSec", "StartLimitBurst", "StartLimitAction",
+        "StopWhenUnneeded", "RefuseManualStart", "RefuseManualStop",
+        "SourcePath", "RequiresMountsFor", "WantsMountsFor",
+        "DefaultDependencies", "CollectMode", "FailureAction", "SuccessAction",
+        "JobTimeoutSec", "JobRunningTimeoutSec", "JobTimeoutAction",
+    ],
+    "Service": [
+        "Type", "ExecStart", "ExecStartPre", "ExecStartPost",
+        "ExecReload", "ExecStop", "ExecStopPre", "ExecStopPost", "ExecCondition",
+        "Restart", "RestartSec", "RestartSteps", "RestartMaxDelaySec", "RestartMode",
+        "RestartPreventExitStatus", "RestartForceExitStatus", "SuccessExitStatus",
+        "TimeoutStartSec", "TimeoutStopSec", "TimeoutAbortSec", "TimeoutSec",
+        "RuntimeMaxSec", "WatchdogSec", "WatchdogSignal",
+        "RemainAfterExit", "GuessMainPID", "PIDFile", "BusName", "NotifyAccess",
+        "ExitType", "OOMPolicy",
+        "WorkingDirectory", "RootDirectory", "RootImage",
+        "User", "Group", "SupplementaryGroups", "DynamicUser",
+        "Environment", "EnvironmentFile", "PassEnvironment", "UnsetEnvironment",
+        "UMask", "ExecSearchPath", "Nice",
+        "IOSchedulingClass", "IOSchedulingPriority",
+        "CPUWeight", "CPUQuota", "CPUQuotaPeriodSec", "CPUSchedulingPolicy",
+        "CPUSchedulingPriority", "CPUAffinity", "CPUAccounting",
+        "MemoryMax", "MemoryHigh", "MemoryLow", "MemoryMin", "MemorySwapMax",
+        "MemoryAccounting", "MemoryZSwapMax",
+        "TasksMax", "TasksAccounting",
+        "IOAccounting",
+        "OOMScoreAdjust", "Slice",
+        "StandardInput", "StandardOutput", "StandardError", "TTYPath",
+        "SyslogIdentifier", "LogLevelMax", "LogExtraFields",
+        "RuntimeDirectory", "RuntimeDirectoryMode", "RuntimeDirectoryPreserve",
+        "StateDirectory", "StateDirectoryMode",
+        "CacheDirectory", "CacheDirectoryMode",
+        "LogsDirectory", "LogsDirectoryMode",
+        "ConfigurationDirectory", "ConfigurationDirectoryMode",
+        "KillMode", "KillSignal", "RestartKillSignal", "FinalKillSignal",
+        "SendSIGKILL", "SendSIGHUP",
+        "LimitCPU", "LimitFSIZE", "LimitDATA", "LimitSTACK", "LimitCORE",
+        "LimitRSS", "LimitNOFILE", "LimitAS", "LimitNPROC", "LimitMEMLOCK",
+        "LimitLOCKS", "LimitSIGPENDING", "LimitMSGQUEUE", "LimitNICE",
+        "LimitRTPRIO", "LimitRTTIME",
+        "CapabilityBoundingSet", "AmbientCapabilities", "NoNewPrivileges",
+        "PrivateTmp", "PrivateDevices", "PrivateNetwork", "PrivateUsers",
+        "ProtectSystem", "ProtectHome", "ProtectHostname", "ProtectClock",
+        "ProtectKernelTunables", "ProtectKernelModules", "ProtectKernelLogs",
+        "ProtectControlGroups",
+        "RestrictAddressFamilies", "RestrictNamespaces", "RestrictRealtime",
+        "RestrictSUIDSGID", "SystemCallFilter", "SystemCallArchitectures",
+        "ReadWritePaths", "ReadOnlyPaths", "InaccessiblePaths",
+        "TemporaryFileSystem", "BindPaths", "BindReadOnlyPaths",
+    ],
+    "Socket": [
+        "ListenStream", "ListenDatagram", "ListenSequentialPacket", "ListenFIFO",
+        "ListenSpecial", "ListenNetlink", "ListenMessageQueue", "ListenUSBFunction",
+        "SocketMode", "DirectoryMode", "Accept", "Writable",
+        "MaxConnections", "MaxConnectionsPerSource",
+        "KeepAlive", "KeepAliveTimeSec", "KeepAliveIntervalSec", "KeepAliveProbes",
+        "NoDelay", "Priority", "ReceiveBuffer", "SendBuffer",
+        "IPTOS", "IPTTL", "Mark", "ReusePort",
+        "SmackLabel", "SmackLabelIPIn", "SmackLabelIPOut", "SELinuxContextFromNet",
+        "PipeSize", "MessageQueueMaxMessages", "MessageQueueMessageSize",
+        "FreeBind", "Transparent", "Broadcast",
+        "PassCredentials", "PassSecurity", "PassPacketInfo", "Timestamping",
+        "TCPCongestion", "ExecStartPre", "ExecStartPost", "ExecStopPre", "ExecStopPost",
+        "Service", "RemoveOnStop", "Symlinks", "FileDescriptorName",
+        "TriggerLimitIntervalSec", "TriggerLimitBurst",
+        "SocketUser", "SocketGroup", "BindIPv6Only", "Backlog",
+        "BindToDevice", "SocketProtocol", "FlushPending",
+    ],
+    "Mount": [
+        "What", "Where", "Type", "Options", "SloppyOptions",
+        "LazyUnmount", "ReadWriteOnly", "ForceUnmount", "DirectoryMode", "TimeoutSec",
+    ],
+    "Automount": [
+        "Where", "ExpiryDurationSec", "TimeoutIdleSec", "DirectoryMode",
+    ],
+    "Swap": [
+        "What", "Priority", "Options", "TimeoutSec",
+    ],
+    "Path": [
+        "PathExists", "PathExistsGlob", "PathChanged", "PathModified",
+        "DirectoryNotEmpty", "Unit", "MakeDirectory", "DirectoryMode",
+        "TriggerLimitIntervalSec", "TriggerLimitBurst",
+    ],
+    "Timer": [
+        "OnActiveSec", "OnBootSec", "OnStartupSec", "OnUnitActiveSec",
+        "OnUnitInactiveSec", "OnCalendar", "AccuracySec", "RandomizedDelaySec",
+        "FixedRandomDelay", "OnClockChange", "OnTimezoneChange",
+        "Unit", "Persistent", "WakeSystem", "RemainAfterElapse",
+        "TriggerLimitIntervalSec", "TriggerLimitBurst",
+    ],
+    "Slice": [
+        "CPUAccounting", "CPUWeight", "StartupCPUWeight", "CPUQuota", "CPUQuotaPeriodSec",
+        "AllowedCPUs", "AllowedMemoryNodes",
+        "MemoryAccounting", "MemoryMin", "MemoryLow", "MemoryHigh",
+        "MemoryMax", "MemorySwapMax", "MemoryZSwapMax",
+        "IOAccounting", "IOWeight", "StartupIOWeight",
+        "IODeviceWeight", "IOReadBandwidthMax", "IOWriteBandwidthMax",
+        "IOReadIOPSMax", "IOWriteIOPSMax", "IODeviceLatencyTargetSec",
+        "TasksAccounting", "TasksMax",
+        "ManagedOOMSwap", "ManagedOOMMemoryPressure",
+        "ManagedOOMMemoryPressureLimit", "ManagedOOMPreference",
+    ],
+    "Install": [
+        "WantedBy", "RequiredBy", "UpheldBy", "Also", "Alias", "DefaultInstance",
+    ],
+}
+
+# Flat directive → primary section (first section that defines it).
+DIRECTIVE_SECTIONS: dict[str, str] = {}
+for _sec, _dirs in SECTION_DIRECTIVES.items():
+    for _d in _dirs:
+        DIRECTIVE_SECTIONS.setdefault(_d, _sec)
+
+# All unique directives sorted for autocomplete.
+SYSTEMD_DIRECTIVES = sorted(
+    dict.fromkeys(d for dirs in SECTION_DIRECTIVES.values() for d in dirs),
+    key=str.lower,
+)
+
+
+
+def section_for_directive(key: str, type_section: str = "") -> str:
+    """Return the correct section for a directive, preferring the unit's type_section."""
+    if type_section and key in SECTION_DIRECTIVES.get(type_section, []):
+        return type_section
+    return DIRECTIVE_SECTIONS.get(key, "Service")
+
+_BOOL = ["yes", "no", "true", "false"]
+_SIGNALS = [
+    "SIGABRT", "SIGALRM", "SIGBUS", "SIGCHLD", "SIGCONT", "SIGFPE",
+    "SIGHUP", "SIGILL", "SIGINT", "SIGKILL", "SIGPIPE", "SIGQUIT",
+    "SIGSEGV", "SIGSYS", "SIGTERM", "SIGTRAP", "SIGTSTP", "SIGTTIN",
+    "SIGTTOU", "SIGURG", "SIGUSR1", "SIGUSR2", "SIGVTALRM", "SIGWINCH",
+    "SIGXCPU", "SIGXFSZ",
+]
+_STDIO_OUT = [
+    "inherit", "null", "tty", "journal", "kmsg",
+    "journal+console", "kmsg+console",
+    "file:", "append:", "truncate:", "socket", "fd:",
 ]
 
-
-DIRECTIVE_SECTIONS = {
-    "Description": "Unit",
-    "Documentation": "Unit",
-    "Wants": "Unit",
-    "Requires": "Unit",
-    "Requisite": "Unit",
-    "BindsTo": "Unit",
-    "PartOf": "Unit",
-    "Upholds": "Unit",
-    "Conflicts": "Unit",
-    "Before": "Unit",
-    "After": "Unit",
-    "OnFailure": "Unit",
-    "OnSuccess": "Unit",
-    "AssertPathExists": "Unit",
-    "AssertPathIsDirectory": "Unit",
-    "AssertPathIsSymbolicLink": "Unit",
-    "AssertFileIsExecutable": "Unit",
-    "ConditionPathExists": "Unit",
-    "ConditionPathIsDirectory": "Unit",
-    "ConditionPathIsSymbolicLink": "Unit",
-    "ConditionFileIsExecutable": "Unit",
-    "StartLimitIntervalSec": "Unit",
-    "StartLimitBurst": "Unit",
-    "StartLimitAction": "Unit",
-    "StopWhenUnneeded": "Unit",
-    "RefuseManualStart": "Unit",
-    "RefuseManualStop": "Unit",
-    "SourcePath": "Unit",
-    "RequiresMountsFor": "Unit",
-    "WantsMountsFor": "Unit",
-    "Slice": "Service",
-    "Type": "Service",
-    "ExecStart": "Service",
-    "ExecStartPre": "Service",
-    "ExecStartPost": "Service",
-    "ExecReload": "Service",
-    "ExecStop": "Service",
-    "ExecStopPost": "Service",
-    "Restart": "Service",
-    "RestartSec": "Service",
-    "RestartSteps": "Service",
-    "RestartMaxDelaySec": "Service",
-    "TimeoutStartSec": "Service",
-    "TimeoutStopSec": "Service",
-    "TimeoutAbortSec": "Service",
-    "WorkingDirectory": "Service",
-    "RootDirectory": "Service",
-    "RootImage": "Service",
-    "User": "Service",
-    "Group": "Service",
-    "SupplementaryGroups": "Service",
-    "Environment": "Service",
-    "EnvironmentFile": "Service",
-    "PassEnvironment": "Service",
-    "UnsetEnvironment": "Service",
-    "UMask": "Service",
-    "ExecSearchPath": "Service",
-    "Nice": "Service",
-    "IOSchedulingClass": "Service",
-    "IOSchedulingPriority": "Service",
-    "CPUWeight": "Service",
-    "CPUQuota": "Service",
-    "MemoryMax": "Service",
-    "MemoryHigh": "Service",
-    "TasksMax": "Service",
-    "WantedBy": "Install",
-    "Also": "Install",
-    "Alias": "Install",
-    "DefaultInstance": "Install",
+SECTION_DIRECTIVE_VALUE_SUGGESTIONS: dict[str, dict[str, list[str]]] = {
+    "Mount": {
+        "Type": [
+            "ext4", "ext3", "ext2", "xfs", "btrfs", "vfat", "fat", "ntfs",
+            "nfs", "nfs4", "cifs", "tmpfs", "overlay", "iso9660", "udf",
+            "squashfs", "erofs", "exfat", "f2fs", "jfs", "reiserfs",
+        ],
+        "Options": ["defaults", "ro", "rw", "noatime", "relatime", "nodiratime",
+                    "noexec", "nosuid", "nodev", "sync", "async", "auto", "noauto",
+                    "user", "users", "owner", "nofail", "x-systemd.automount"],
+    },
+    "Swap": {
+        "Options": ["defaults", "pri=", "discard", "nofail"],
+    },
 }
 
-ADDITIONAL_DIRECTIVE_SECTIONS = {
-    # [Unit]
-    "ConditionPathExistsGlob": "Unit",
-    "ConditionPathIsMountPoint": "Unit",
-    "ConditionPathIsReadWrite": "Unit",
-    "ConditionDirectoryNotEmpty": "Unit",
-    "ConditionFileNotEmpty": "Unit",
-    "ConditionUser": "Unit",
-    "ConditionGroup": "Unit",
-    "ConditionHost": "Unit",
-    "ConditionKernelCommandLine": "Unit",
-    "ConditionVirtualization": "Unit",
-    "ConditionArchitecture": "Unit",
-    "ConditionACPower": "Unit",
-    "ConditionNeedsUpdate": "Unit",
-    "ConditionFirstBoot": "Unit",
-    # [Service]
-    "ExitType": "Service",
-    "RemainAfterExit": "Service",
-    "GuessMainPID": "Service",
-    "PIDFile": "Service",
-    "BusName": "Service",
-    "NotifyAccess": "Service",
-    "ExecCondition": "Service",
-    "RestartMode": "Service",
-    "RestartPreventExitStatus": "Service",
-    "RestartForceExitStatus": "Service",
-    "SuccessExitStatus": "Service",
-    "TimeoutSec": "Service",
-    "RuntimeMaxSec": "Service",
-    "WatchdogSec": "Service",
-    "WatchdogSignal": "Service",
-    "StandardInput": "Service",
-    "StandardOutput": "Service",
-    "StandardError": "Service",
-    "TTYPath": "Service",
-    "SyslogIdentifier": "Service",
-    "LogLevelMax": "Service",
-    "LogExtraFields": "Service",
-    "RuntimeDirectory": "Service",
-    "RuntimeDirectoryMode": "Service",
-    "RuntimeDirectoryPreserve": "Service",
-    "StateDirectory": "Service",
-    "StateDirectoryMode": "Service",
-    "CacheDirectory": "Service",
-    "CacheDirectoryMode": "Service",
-    "LogsDirectory": "Service",
-    "LogsDirectoryMode": "Service",
-    "ConfigurationDirectory": "Service",
-    "ConfigurationDirectoryMode": "Service",
-    "CPUSchedulingPolicy": "Service",
-    "CPUSchedulingPriority": "Service",
-    "CPUAffinity": "Service",
-    "CPUQuotaPeriodSec": "Service",
-    "MemoryLow": "Service",
-    "MemoryMin": "Service",
-    "MemorySwapMax": "Service",
-    "MemoryAccounting": "Service",
-    "CPUAccounting": "Service",
-    "IOAccounting": "Service",
-    "TasksAccounting": "Service",
-    "LimitCPU": "Service",
-    "LimitFSIZE": "Service",
-    "LimitDATA": "Service",
-    "LimitSTACK": "Service",
-    "LimitCORE": "Service",
-    "LimitRSS": "Service",
-    "LimitNOFILE": "Service",
-    "LimitAS": "Service",
-    "LimitNPROC": "Service",
-    "LimitMEMLOCK": "Service",
-    "LimitLOCKS": "Service",
-    "LimitSIGPENDING": "Service",
-    "LimitMSGQUEUE": "Service",
-    "LimitNICE": "Service",
-    "LimitRTPRIO": "Service",
-    "LimitRTTIME": "Service",
-    "KillMode": "Service",
-    "KillSignal": "Service",
-    "RestartKillSignal": "Service",
-    "FinalKillSignal": "Service",
-    "SendSIGKILL": "Service",
-    "SendSIGHUP": "Service",
-    "OOMPolicy": "Service",
-    "OOMScoreAdjust": "Service",
-    "CapabilityBoundingSet": "Service",
-    "AmbientCapabilities": "Service",
-    "NoNewPrivileges": "Service",
-    "PrivateTmp": "Service",
-    "PrivateDevices": "Service",
-    "PrivateNetwork": "Service",
-    "PrivateUsers": "Service",
-    "ProtectSystem": "Service",
-    "ProtectHome": "Service",
-    "ProtectHostname": "Service",
-    "ProtectClock": "Service",
-    "ProtectKernelTunables": "Service",
-    "ProtectKernelModules": "Service",
-    "ProtectKernelLogs": "Service",
-    "ProtectControlGroups": "Service",
-    "RestrictAddressFamilies": "Service",
-    "RestrictNamespaces": "Service",
-    "RestrictRealtime": "Service",
-    "RestrictSUIDSGID": "Service",
-    "SystemCallFilter": "Service",
-    "SystemCallArchitectures": "Service",
-    "ReadWritePaths": "Service",
-    "ReadOnlyPaths": "Service",
-    "InaccessiblePaths": "Service",
-    "TemporaryFileSystem": "Service",
-    "BindPaths": "Service",
-    "BindReadOnlyPaths": "Service",
-    # [Install]
-    "RequiredBy": "Install",
-    "UpheldBy": "Install",
+DIRECTIVE_VALUE_SUGGESTIONS: dict[str, list[str]] = {
+    # ── [Service] ──────────────────────────────────────────────────────
+    "Type": ["simple", "exec", "forking", "oneshot", "dbus",
+             "notify", "notify-reload", "idle"],
+    "Restart": ["no", "on-success", "on-failure", "on-abnormal",
+                "on-watchdog", "on-abort", "always"],
+    "RestartMode": ["normal", "direct"],
+    "ExitType": ["main", "cgroup"],
+    "NotifyAccess": ["none", "main", "exec", "all"],
+    "OOMPolicy": ["continue", "stop", "kill"],
+    "KillMode": ["control-group", "process", "mixed", "none"],
+    "KillSignal": _SIGNALS,
+    "RestartKillSignal": _SIGNALS,
+    "FinalKillSignal": _SIGNALS,
+    "WatchdogSignal": _SIGNALS,
+    "StandardInput": ["null", "tty", "tty-force", "tty-fail",
+                      "data", "file:", "socket", "fd:"],
+    "StandardOutput": _STDIO_OUT,
+    "StandardError": _STDIO_OUT,
+    "IOSchedulingClass": ["none", "realtime", "best-effort", "idle"],
+    "CPUSchedulingPolicy": ["other", "batch", "idle", "fifo", "rr"],
+    "ProtectSystem": ["true", "false", "full", "strict"],
+    "ProtectHome": ["true", "false", "read-only", "tmpfs"],
+    "RuntimeDirectoryPreserve": ["no", "yes", "restart"],
+    "MountAPIVFS": _BOOL,
+    "RemainAfterExit": _BOOL,
+    "GuessMainPID": _BOOL,
+    "SendSIGKILL": _BOOL,
+    "SendSIGHUP": _BOOL,
+    "PrivateTmp": _BOOL,
+    "PrivateDevices": _BOOL,
+    "PrivateNetwork": _BOOL,
+    "PrivateUsers": _BOOL,
+    "PrivateMounts": _BOOL,
+    "PrivateIPC": _BOOL,
+    "ProtectHostname": _BOOL,
+    "ProtectClock": _BOOL,
+    "ProtectKernelTunables": _BOOL,
+    "ProtectKernelModules": _BOOL,
+    "ProtectKernelLogs": _BOOL,
+    "ProtectControlGroups": _BOOL,
+    "ProtectProc": ["noaccess", "invisible", "ptraceable", "default"],
+    "ProcSubset": ["all", "pid"],
+    "LockPersonality": _BOOL,
+    "MemoryDenyWriteExecute": _BOOL,
+    "NoNewPrivileges": _BOOL,
+    "RestrictRealtime": _BOOL,
+    "RestrictSUIDSGID": _BOOL,
+    "DynamicUser": _BOOL,
+    # ── [Unit] ─────────────────────────────────────────────────────────
+    "StartLimitAction": [
+        "none", "reboot", "reboot-force", "reboot-immediate",
+        "poweroff", "poweroff-force", "poweroff-immediate",
+        "exit", "exit-force", "halt", "halt-force", "halt-immediate",
+    ],
+    "StopWhenUnneeded": _BOOL,
+    "RefuseManualStart": _BOOL,
+    "RefuseManualStop": _BOOL,
+    "ConditionVirtualization": [
+        "private", "container", "vm", "host",
+        "kvm", "qemu", "bochs", "xen", "uml",
+        "openvz", "lxc", "lxc-libvirt", "systemd-nspawn",
+        "docker", "podman", "rkt", "wsl", "proot", "acrn",
+    ],
+    "ConditionArchitecture": [
+        "x86", "x86-64", "ppc", "ppc-le", "ppc64", "ppc64-le",
+        "ia64", "parisc", "parisc64", "s390", "s390x",
+        "sparc", "sparc64", "mips", "mips-le", "mips64", "mips64-le",
+        "alpha", "arm", "arm-be", "arm64", "arm64-be",
+        "sh", "sh64", "m68k", "tilegx", "cris", "arc", "arc-be", "native",
+    ],
+    "ConditionACPower": _BOOL,
+    "ConditionFirstBoot": _BOOL,
+    # ── [Timer] ────────────────────────────────────────────────────────
+    "WakeSystem": _BOOL,
+    "Persistent": _BOOL,
+    "RemainAfterElapse": _BOOL,
+    "FixedRandomDelay": _BOOL,
+    "OnClockChange": _BOOL,
+    "OnTimezoneChange": _BOOL,
+    # ── [Socket] ───────────────────────────────────────────────────────
+    "Accept": _BOOL,
+    "Writable": _BOOL,
+    "KeepAlive": _BOOL,
+    "NoDelay": _BOOL,
+    "FreeBind": _BOOL,
+    "Transparent": _BOOL,
+    "Broadcast": _BOOL,
+    "PassCredentials": _BOOL,
+    "PassSecurity": _BOOL,
+    "PassPacketInfo": _BOOL,
+    "ReusePort": _BOOL,
+    "RemoveOnStop": _BOOL,
+    "FlushPending": _BOOL,
+    "SELinuxContextFromNet": _BOOL,
+    "BindIPv6Only": ["default", "both", "ipv6-only"],
+    "Timestamping": ["off", "us", "usec", "ns", "nsec"],
+    "SocketProtocol": ["udplite", "sctp"],
+    # ── [Mount] ────────────────────────────────────────────────────────
+    "SloppyOptions": _BOOL,
+    "LazyUnmount": _BOOL,
+    "ReadWriteOnly": _BOOL,
+    "ForceUnmount": _BOOL,
+    # ── [Automount] ────────────────────────────────────────────────────
+    # (no closed-value directives beyond booleans already listed)
+    # ── [Path] ─────────────────────────────────────────────────────────
+    "MakeDirectory": _BOOL,
+    # ── [Slice] ────────────────────────────────────────────────────────
+    "ManagedOOMSwap": ["auto", "kill"],
+    "ManagedOOMMemoryPressure": ["auto", "kill"],
+    "ManagedOOMPreference": ["none", "avoid", "omit"],
 }
 
-DIRECTIVE_SECTIONS.update(ADDITIONAL_DIRECTIVE_SECTIONS)
-SYSTEMD_DIRECTIVES = sorted(dict.fromkeys([*SYSTEMD_DIRECTIVES, *ADDITIONAL_DIRECTIVE_SECTIONS]), key=str.lower)
+# Maps unit file suffix to the name of its type-specific section
+SUFFIX_TO_SECTION: dict[str, str] = {
+    "service": "Service",
+    "socket": "Socket",
+    "mount": "Mount",
+    "automount": "Automount",
+    "swap": "Swap",
+    "path": "Path",
+    "timer": "Timer",
+    "slice": "Slice",
+    "target": "",   # targets have only [Unit] and [Install]
+    "scope": "Service",  # scopes share Service directives
+    "device": "",   # device units have only [Unit]
+}
 
 ENVIRONMENT_KEYS = [
     "PATH",
@@ -354,11 +388,10 @@ def group_suggestions() -> list[str]:
     return results
 
 
-@lru_cache(maxsize=512)
 def path_suggestions(prefix: str = "") -> list[str]:
     raw = os.path.expanduser(prefix.strip())
     if not raw:
-        roots = [
+        return [
             "/etc/systemd/system/",
             "/opt/",
             "/srv/",
@@ -367,37 +400,86 @@ def path_suggestions(prefix: str = "") -> list[str]:
             "/bin/",
             str(Path.home()) + "/",
         ]
-        return roots
-
     path = Path(raw)
     if raw.endswith(os.sep) or path.is_dir():
-        directory = path
-        needle = ""
+        directory, needle = path, ""
     else:
-        directory = path.parent
-        needle = path.name
-
+        directory, needle = path.parent, path.name
     if not directory.exists() or not directory.is_dir():
         return []
-
     results: list[str] = []
     seen: set[str] = set()
     try:
         for child in directory.iterdir():
-            name = child.name
-            if needle and not name.startswith(needle):
+            if needle and not child.name.startswith(needle):
                 continue
-            candidate = str(child)
-            if child.is_dir():
-                candidate += os.sep
-            if candidate in seen:
-                continue
-            seen.add(candidate)
-            results.append(candidate)
+            candidate = str(child) + (os.sep if child.is_dir() else "")
+            if candidate not in seen:
+                seen.add(candidate)
+                results.append(candidate)
     except OSError:
         return []
     results.sort()
     return results
+
+
+@lru_cache(maxsize=1)
+def disk_suggestions() -> list[str]:
+    """Block devices and partitions suitable for What= in mount/swap units."""
+    devices: list[str] = []
+    seen: set[str] = set()
+    try:
+        output = os.popen("lsblk -rno PATH,TYPE 2>/dev/null").read()
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            path, kind = parts[0], parts[1]
+            if kind in {"disk", "part", "lvm", "raid1", "crypt"} and path not in seen:
+                seen.add(path)
+                devices.append(path)
+    except Exception:
+        pass
+    try:
+        output = os.popen("blkid -o export 2>/dev/null").read()
+        uuid = label = ""
+        for line in output.splitlines():
+            if line.startswith("UUID="):
+                uuid = line.strip()
+            elif line.startswith("LABEL="):
+                label = line.strip()
+            elif line == "" and uuid:
+                if uuid and uuid not in seen:
+                    seen.add(uuid); devices.append(uuid)
+                if label and label not in seen:
+                    seen.add(label); devices.append(label)
+                uuid = label = ""
+    except Exception:
+        pass
+    devices.sort()
+    return devices
+
+
+@lru_cache(maxsize=1)
+def unit_suggestions() -> list[str]:
+    units: list[str] = []
+    seen: set[str] = set()
+    try:
+        output = os.popen(
+            "systemctl list-unit-files --no-legend --no-pager --plain"
+        ).read()
+        for line in output.splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            name = parts[0].strip()
+            if name and name not in seen:
+                seen.add(name)
+                units.append(name)
+    except Exception:
+        pass
+    units.sort()
+    return units
 
 
 @lru_cache(maxsize=1)
@@ -440,3 +522,5 @@ def target_suggestions() -> list[str]:
             targets.append(name)
     targets.sort()
     return targets
+
+

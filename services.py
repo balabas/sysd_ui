@@ -23,6 +23,7 @@ class ServiceUnit:
     journal: list[tuple[str, str]] = field(default_factory=list)
     favorite: bool = False
     service_class: str = "system"
+    search_blob: str = ""  # extra text for full-text search (property values)
 
 
 def sample_services() -> list[ServiceUnit]:

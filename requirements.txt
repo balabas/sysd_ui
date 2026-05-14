@@ -1,0 +1,15 @@
+# Web interface & API
+fastapi>=0.110.0
+uvicorn>=0.29.0
+starlette>=0.37.0
+pydantic>=2.0.0
+
+# Auth
+itsdangerous>=2.1.0
+python-dotenv>=1.0.0
+
+# Desktop wrapper (optional — only needed for run_desktop.py)
+pywebview>=4.0.0
+
+# System dependency for file picker in browser mode:
+#   sudo apt install zenity
