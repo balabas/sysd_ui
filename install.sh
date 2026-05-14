@@ -121,7 +121,8 @@ echo "--- Installing system packages ---"
 MISSING_PKGS=()
 command -v python3 &>/dev/null       || MISSING_PKGS+=("python3")
 python3 -m pip --version &>/dev/null || MISSING_PKGS+=("python3-pip")
-python3 -m venv --help &>/dev/null   || MISSING_PKGS+=("python3-venv")
+_PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "3")
+python3 -c "import ensurepip" &>/dev/null || MISSING_PKGS+=("python3${_PY_VER}-venv")
 
 if [[ "${MODE}" == "desktop" ]]; then
   command -v zenity &>/dev/null || MISSING_PKGS+=("zenity")
