@@ -118,7 +118,7 @@ Click **+ New unit** in the sidebar.
 
 ---
 
-## File structure
+## Project structure
 
 ```
 run_web.py          # browser mode entry point

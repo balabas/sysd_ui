@@ -45,6 +45,8 @@ def _find_browser() -> list[str] | None:
                 "--window-size=1280,800",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--class=sysd_ui",
+                "--name=sysd_ui",
             ]
     return None
 
