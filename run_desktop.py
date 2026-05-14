@@ -36,36 +36,54 @@ def _wait_for_server(timeout: float = 5.0) -> bool:
     return False
 
 
+def _set_bamf_hint() -> None:
+    for p in [
+        Path.home() / ".local/share/applications/sysd_ui.desktop",
+        Path("/usr/share/applications/sysd_ui.desktop"),
+    ]:
+        if p.exists():
+            os.environ["BAMF_DESKTOP_FILE_HINT"] = str(p)
+            return
+
+
 def _find_browser() -> list[str] | None:
     for name in ("chromium-browser", "chromium", "google-chrome-stable", "google-chrome"):
         if which(name):
-            return [
+            loading = Path(__file__).parent / "web" / "static" / "loading.html"
+            profile_dir = Path(__file__).parent / ".chrome-profile"
+            cmd = [
                 name,
-                f"--app=http://127.0.0.1:{PORT}/",
+                f"--app=file://{loading}",
+                f"--user-data-dir={profile_dir}",
                 "--window-size=1280,800",
                 "--no-first-run",
                 "--no-default-browser-check",
+                "--disable-extensions",
                 "--class=sysd_ui",
                 "--name=sysd_ui",
             ]
+            return cmd
     return None
 
 
 if __name__ == "__main__":
+    _set_bamf_hint()
     t = threading.Thread(target=_start_server, daemon=True)
     t.start()
 
-    if not _wait_for_server():
-        print("Server did not start in time", file=sys.stderr)
-        sys.exit(1)
-
     cmd = _find_browser()
     if cmd is None:
+        if not _wait_for_server():
+            print("Server did not start in time", file=sys.stderr)
+            sys.exit(1)
         import webbrowser
-        print(f"No Chromium/Chrome found — opening in default browser")
+        print("No Chromium/Chrome found — opening in default browser")
         webbrowser.open(f"http://127.0.0.1:{PORT}/")
+        proc = None
     else:
         proc = subprocess.Popen(cmd)
+        if not _wait_for_server():
+            print("Server did not start in time", file=sys.stderr)
 
     # Keep server alive until the browser window closes (or Ctrl-C)
     try:

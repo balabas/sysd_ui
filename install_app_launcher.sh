@@ -32,10 +32,10 @@ echo "--- Installing system packages ---"
 
 MISSING_PKGS=()
 
-command -v python3 &>/dev/null          || MISSING_PKGS+=("python3")
-python3 -m pip --version &>/dev/null    || MISSING_PKGS+=("python3-pip")
-python3 -m venv --help &>/dev/null      || MISSING_PKGS+=("python3-venv")
-command -v zenity &>/dev/null           || MISSING_PKGS+=("zenity")
+command -v python3 &>/dev/null       || MISSING_PKGS+=("python3")
+python3 -m pip --version &>/dev/null || MISSING_PKGS+=("python3-pip")
+python3 -m venv --help &>/dev/null   || MISSING_PKGS+=("python3-venv")
+command -v zenity &>/dev/null        || MISSING_PKGS+=("zenity")
 
 if ! command -v chromium-browser &>/dev/null && \
    ! command -v chromium &>/dev/null && \
@@ -73,41 +73,44 @@ echo "Python requirements installed."
 echo ""
 echo "--- Installing desktop launcher ---"
 
+# Remove any old entries (previous app IDs)
+for old in com.local.sysd_ui; do
+  for dir in "${HOME}/.local/share/applications" "/usr/share/applications"; do
+    [[ -f "${dir}/${old}.desktop" ]] && rm -f "${dir}/${old}.desktop" && echo "Removed old entry: ${old}.desktop"
+  done
+done
+
 if [[ ! -f "${RUNNER}" ]]; then
   echo "run_desktop.py not found: ${RUNNER}" >&2
   exit 1
 fi
 
-if [[ "${SYSTEM_INSTALL}" -eq 1 ]]; then
-  sudo mkdir -p "${DESKTOP_DIR}"
-  WRITE_CMD="sudo tee ${DESKTOP_FILE} > /dev/null"
-else
-  mkdir -p "${DESKTOP_DIR}"
-  WRITE_CMD="tee ${DESKTOP_FILE} > /dev/null"
-fi
-
-cat <<EOF | eval "${WRITE_CMD}"
-[Desktop Entry]
+DESKTOP_CONTENT="[Desktop Entry]
 Type=Application
 Name=${APP_NAME}
 Comment=Web-based systemd service manager
 Exec=${PYTHON} ${RUNNER}
+Path=${PROJECT_DIR}
 Icon=utilities-system-monitor
 Terminal=false
 Categories=System;Settings;
-StartupNotify=true
-StartupWMClass=${APP_ID}
-EOF
+StartupNotify=false
+StartupWMClass=${APP_ID}"
 
 if [[ "${SYSTEM_INSTALL}" -eq 1 ]]; then
+  sudo mkdir -p "${DESKTOP_DIR}"
+  echo "${DESKTOP_CONTENT}" | sudo tee "${DESKTOP_FILE}" > /dev/null
   sudo chmod 0644 "${DESKTOP_FILE}"
 else
+  mkdir -p "${DESKTOP_DIR}"
+  echo "${DESKTOP_CONTENT}" > "${DESKTOP_FILE}"
   chmod 0644 "${DESKTOP_FILE}"
 fi
 
 if command -v update-desktop-database &>/dev/null; then
   update-desktop-database "${DESKTOP_DIR}" &>/dev/null || true
 fi
+
 
 echo "Launcher installed: ${DESKTOP_FILE}"
 

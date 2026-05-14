@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>sysd_ui</title>
+<style>
+  body { margin: 0; background: #0f0f1a; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: 'Segoe UI', system-ui, sans-serif; color: #6c7086; }
+  .wrap { text-align: center; }
+  .logo { font-size: 1.4em; font-weight: 700; color: #4cc9f0; letter-spacing: .05em; margin-bottom: 18px; }
+  .spinner { width: 28px; height: 28px; border: 3px solid rgba(76,201,240,.15); border-top-color: #4cc9f0; border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">sysd_ui</div>
+  <div class="spinner"></div>
+</div>
+<script>
+  const BASE = 'http://127.0.0.1:8766';
+  function tryConnect() {
+    fetch(BASE + '/api/auth-status').then(r => {
+      if (r.ok) location.replace(BASE + '/');
+      else setTimeout(tryConnect, 300);
+    }).catch(() => setTimeout(tryConnect, 300));
+  }
+  tryConnect();
+</script>
+</body>
+</html>

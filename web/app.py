@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -81,10 +82,10 @@ def _is_authenticated(request: Request) -> bool:
 
 
 app = FastAPI(title="sysd_ui")
-# SessionMiddleware must wrap AuthMiddleware so session is populated first.
-# add_middleware prepends, so add AuthMiddleware first (inner), SessionMiddleware second (outer).
 app.add_middleware(_AuthMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=_SECRET)
+# Allow loading.html (served via file://) to fetch the API in desktop mode
+app.add_middleware(CORSMiddleware, allow_origins=["null"], allow_methods=["GET", "POST"])
 
 _backend = SystemdBackend()
 _STATIC = Path(__file__).parent / "static"
