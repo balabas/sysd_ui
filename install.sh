@@ -37,6 +37,21 @@ if [[ "${MODE}" == "server" ]]; then
   read -rp "Port        [${DEFAULT_PORT}]: " _p; PORT="${_p:-${DEFAULT_PORT}}"
   read -rp "Run as user [${DEFAULT_USER}]: " _u; RUN_USER="${_u:-${DEFAULT_USER}}"
   echo ""
+
+  # read current credentials from .env as defaults
+  ENV_FILE="${PROJECT_DIR}/.env"
+  CURRENT_LOGIN=$(grep -oP '(?<=SYSD_UI_USER=)\S+' "${ENV_FILE}" 2>/dev/null || echo "admin")
+
+  read -rp  "Login username [${CURRENT_LOGIN}]: " _login
+  AUTH_USER="${_login:-${CURRENT_LOGIN}}"
+  while true; do
+    read -rsp "Login password: " AUTH_PASS; echo ""
+    read -rsp "Confirm password: " AUTH_PASS2; echo ""
+    [[ "${AUTH_PASS}" == "${AUTH_PASS2}" ]] && break
+    echo "Passwords do not match, try again."
+  done
+  echo ""
+
   read -rp "Install as systemd service (auto-start on boot)? [Y/n]: " _s
   case "${_s,,}" in
     n|no) AS_SERVICE="no" ;;
@@ -47,6 +62,7 @@ if [[ "${MODE}" == "server" ]]; then
   echo "  Mode    : server"
   echo "  Listen  : ${HOST}:${PORT}"
   echo "  Run as  : ${RUN_USER}"
+  echo "  Login   : ${AUTH_USER}"
   echo "  Service : ${AS_SERVICE}"
 else
   # desktop: check --system flag for scope
@@ -76,6 +92,15 @@ echo ""
 if [[ "${MODE}" == "server" && "${PORT}" != "${CFG_PORT}" ]]; then
   sed -i "s/^PORT = .*/PORT = ${PORT}/" "${PROJECT_DIR}/config.py"
   echo "config.py updated: PORT = ${PORT}"
+  echo ""
+fi
+
+# ── write .env with credentials ──────────────────────────────────────────────
+if [[ "${MODE}" == "server" ]]; then
+  ENV_FILE="${PROJECT_DIR}/.env"
+  printf 'SYSD_UI_USER=%s\nSYSD_UI_PASSWORD=%s\n' "${AUTH_USER}" "${AUTH_PASS}" > "${ENV_FILE}"
+  chmod 0600 "${ENV_FILE}"
+  echo ".env updated with credentials."
   echo ""
 fi
 
