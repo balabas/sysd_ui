@@ -17,7 +17,8 @@
   <div class="spinner"></div>
 </div>
 <script>
-  const BASE = 'http://127.0.0.1:8766';
+  const _port = new URLSearchParams(location.search).get('port') || '8766';
+  const BASE = 'http://127.0.0.1:' + _port;
   function tryConnect() {
     fetch(BASE + '/api/auth-status').then(r => {
       if (r.ok) location.replace(BASE + '/');

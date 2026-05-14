@@ -94,6 +94,12 @@ header { display: flex; align-items: center; gap: 10px; padding: 9px 16px; flex-
 /* editor panel */
 #panel-editor.active { overflow: hidden; }
 #editor-scroll { flex: 1; overflow-y: auto; padding: 16px 20px 0; }
+
+/* test terminal */
+#test-terminal { height: 220px; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: #080810; flex-shrink: 0; }
+.term-header { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--border); background: var(--panel2); flex-shrink: 0; }
+.term-title { font-size: .82em; color: var(--accent); font-weight: 600; letter-spacing: .03em; flex: 1; }
+#term-output { flex: 1; overflow-y: auto; padding: 8px 14px; margin: 0; font-family: monospace; font-size: .82em; color: #a6e3a1; white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
 #d-required-by { margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; background: rgba(249,226,175,.08); border: 1px solid rgba(249,226,175,.25); color: var(--warning); font-size: .84em; }
 #editor-footer { display: flex; align-items: center; gap: 8px; padding: 11px 20px; border-top: 1px solid var(--border); background: var(--panel); flex-shrink: 0; flex-wrap: wrap; }
 #save-status { font-size: .84em; }
@@ -152,7 +158,7 @@ textarea.field-input { line-height: 1.5; min-height: 32px; }
 .env-fold-body .fold-arrow { transition: transform .15s; }
 
 /* env key=value rows */
-.env-kv-row { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-top: 1px solid var(--border); }
+.env-kv-row { display: flex; align-items: flex-start; gap: 6px; padding: 5px 10px; border-top: 1px solid var(--border); }
 .env-eq { color: var(--muted); flex-shrink: 0; font-family: monospace; }
 .env-key { width: 150px; flex-shrink: 0; background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; color: var(--text); font-size: .87em; font-family: monospace; }
 .env-key:focus { outline: none; border-color: var(--accent); }
@@ -332,11 +338,20 @@ button { cursor: pointer; border-radius: 6px; font-size: .85em; }
               <div id="d-required-by" hidden></div>
               <div id="d-editor"></div>
             </div>
+            <div id="test-terminal" hidden>
+              <div class="term-header">
+                <span class="term-title">▶ Test run</span>
+                <button class="btn" id="test-stop-btn" onclick="testStop()">■ Stop</button>
+                <button class="btn" onclick="closeTestTerminal()" style="padding:4px 8px" title="Close terminal">✕</button>
+              </div>
+              <pre id="term-output"></pre>
+            </div>
             <div id="editor-footer">
               <button class="btn primary" id="save-btn"    onclick="doSave()">Save override</button>
               <button class="btn"         id="backup-btn"  onclick="doBackup()">Backup</button>
               <button class="btn danger"  id="restore-btn" onclick="doRestore()">Restore backup</button>
               <button class="btn"         id="reload-btn"  onclick="reloadFromDisk()">Reload from disk</button>
+              <button class="btn"         id="testrun-btn" onclick="testRun()">▶ Test run</button>
               <span id="save-status"></span>
               <span id="editor-state"></span>
             </div>

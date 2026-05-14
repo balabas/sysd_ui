@@ -17,19 +17,18 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import uvicorn
 from web.app import app
-
-PORT = 8766
+from config import PORT, HOST_DESKTOP
 
 
 def _start_server() -> None:
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="error")
+    uvicorn.run(app, host=HOST_DESKTOP, port=PORT, log_level="error")
 
 
 def _wait_for_server(timeout: float = 5.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            urllib.request.urlopen(f"http://127.0.0.1:{PORT}/", timeout=1)
+            urllib.request.urlopen(f"http://{HOST_DESKTOP}:{PORT}/", timeout=1)
             return True
         except Exception:
             time.sleep(0.05)
@@ -53,7 +52,7 @@ def _find_browser() -> list[str] | None:
             profile_dir = Path(__file__).parent / ".chrome-profile"
             cmd = [
                 name,
-                f"--app=file://{loading}",
+                f"--app=file://{loading}?port={PORT}",
                 f"--user-data-dir={profile_dir}",
                 "--window-size=1280,800",
                 "--no-first-run",
@@ -78,7 +77,7 @@ if __name__ == "__main__":
             sys.exit(1)
         import webbrowser
         print("No Chromium/Chrome found — opening in default browser")
-        webbrowser.open(f"http://127.0.0.1:{PORT}/")
+        webbrowser.open(f"http://{HOST_DESKTOP}:{PORT}/")
         proc = None
     else:
         proc = subprocess.Popen(cmd)

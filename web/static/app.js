@@ -152,6 +152,8 @@ addEventListener('DOMContentLoaded', async () => {
 });
 
 async function _bootApp() {
+  _restoreFilterState();
+
   GET('/api/suggestions/static').then(s => {
     Object.assign(_sg, s);
     _dl('sg-directives', _sg.directives);
@@ -274,16 +276,33 @@ function filterList() {
 
 function setClassFilter(btn) {
   _classFilter = btn.dataset.class;
+  localStorage.setItem('sysd_classFilter', _classFilter);
   document.querySelectorAll('#class-filter .chip').forEach(c => c.classList.toggle('active', c === btn));
   filterList();
 }
 
+function _restoreFilterState() {
+  _favOnly     = !!localStorage.getItem('sysd_favOnly');
+  _classFilter = localStorage.getItem('sysd_classFilter') || 'all';
+  _applyFavBtn();
+  const chip = document.querySelector(`#class-filter .chip[data-class="${_classFilter}"]`);
+  if (chip) {
+    document.querySelectorAll('#class-filter .chip').forEach(c => c.classList.toggle('active', c === chip));
+  }
+}
+
 function toggleFavFilter() {
   _favOnly = !_favOnly;
+  localStorage.setItem('sysd_favOnly', _favOnly ? '1' : '');
+  _applyFavBtn();
+  filterList();
+}
+
+function _applyFavBtn() {
   const btn = document.getElementById('fav-toggle');
+  if (!btn) return;
   btn.textContent = (_favOnly ? '★' : '☆') + ' Favorites';
   btn.classList.toggle('on', _favOnly);
-  filterList();
 }
 
 async function toggleFav(e, name) {
@@ -1040,21 +1059,80 @@ function _makeFoldable(title, makeActions) {
 }
 
 // ── env KEY=VALUE row ──────────────────────────────────────────────────────────
+function _looksLikePath(v) {
+  return v.startsWith('/') || v.startsWith('~/') || v.startsWith('./') || v.startsWith('../');
+}
+
+function _envKeyIsDir(k) {
+  const u = k.toUpperCase();
+  if (/FILE|EXEC|BIN|CMD|COMMAND/.test(u)) return false;
+  return true; // most env var paths are directories
+}
+
 function _makeEnvKvRow(key, value, syncHidden, removeCallback) {
   const row = document.createElement('div');
   row.className = 'env-kv-row';
+  row.style.alignItems = 'flex-start';
+
   const keyIn = document.createElement('input');
   keyIn.className = 'key-input env-key'; keyIn.placeholder = 'VARIABLE'; keyIn.value = key;
+  keyIn.style.marginTop = '4px';
   _attach(keyIn, 'sg-env-keys');
-  const eq = document.createElement('span'); eq.className = 'env-eq'; eq.textContent = '=';
+
+  const eq = document.createElement('span');
+  eq.className = 'env-eq'; eq.textContent = '='; eq.style.marginTop = '7px';
+
+  const valWrap = document.createElement('div');
+  valWrap.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px';
+
+  const valRow = document.createElement('div');
+  valRow.style.cssText = 'display:flex;gap:4px;align-items:center';
+
   const valIn = document.createElement('input');
   valIn.className = 'field-input env-val'; valIn.placeholder = 'value'; valIn.value = value;
+
+  const browseBtn = document.createElement('button');
+  browseBtn.type = 'button'; browseBtn.className = 'browse-btn'; browseBtn.textContent = '…';
+  browseBtn.title = 'Browse…'; browseBtn.hidden = true;
+
+  const hint = document.createElement('div');
+  hint.className = 'field-hint'; hint.hidden = true;
+
+  valRow.appendChild(valIn); valRow.appendChild(browseBtn);
+  valWrap.appendChild(valRow); valWrap.appendChild(hint);
+
   const rmBtn = document.createElement('button');
   rmBtn.className = 'env-action-btn env-remove-btn'; rmBtn.textContent = 'Remove variable';
+  rmBtn.style.marginTop = '2px';
   if (removeCallback) rmBtn.onclick = removeCallback;
+
+  let _pathTimer = null;
+  function _checkValAsPath() {
+    syncHidden(); markDirty();
+    const v = valIn.value.trim();
+    if (!_looksLikePath(v)) {
+      browseBtn.hidden = true;
+      _clearHint(valIn, hint);
+      return;
+    }
+    const isDir = _envKeyIsDir(keyIn.value.trim());
+    browseBtn.hidden = false;
+    browseBtn.onclick = () => _pickFile(valIn, { directory: isDir });
+    clearTimeout(_pathTimer);
+    _pathTimer = setTimeout(async () => {
+      try {
+        const r = await GET(`/api/check-path?path=${encodeURIComponent(v)}`);
+        if (!r.exists) _setHint(valIn, hint, r.message, 'err');
+        else { _setHint(valIn, hint, r.message, 'ok'); valIn.classList.remove('err'); }
+      } catch (_) {}
+    }, 400);
+  }
+
   keyIn.addEventListener('input', () => { syncHidden(); markDirty(); });
-  valIn.addEventListener('input', () => { syncHidden(); markDirty(); });
-  row.appendChild(keyIn); row.appendChild(eq); row.appendChild(valIn); row.appendChild(rmBtn);
+  valIn.addEventListener('input', _checkValAsPath);
+  if (value) _checkValAsPath();
+
+  row.appendChild(keyIn); row.appendChild(eq); row.appendChild(valWrap); row.appendChild(rmBtn);
   return row;
 }
 
@@ -1300,6 +1378,55 @@ async function submitCreate() {
       closeCreatePanel();
     }
   } catch (e) { status.textContent = '✗ ' + e.message; status.className = 'err'; }
+}
+
+// ── test run ──────────────────────────────────────────────────────────────────
+let _testSource = null;
+
+function testRun() {
+  if (!_selected) return;
+
+  const execInput = document.querySelector('#d-editor .prop-input[data-key="ExecStart"]');
+  const cmd = execInput?.value.trim();
+  if (!cmd) { statusMsg('ExecStart is empty — nothing to test', 'err'); return; }
+
+  const term    = document.getElementById('test-terminal');
+  const output  = document.getElementById('term-output');
+  const stopBtn = document.getElementById('test-stop-btn');
+
+  term.hidden = false;
+  output.textContent = '';
+  stopBtn.disabled = false;
+
+  if (_testSource) { _testSource.close(); _testSource = null; }
+
+  const url = `/api/services/${enc(_selected.name)}/test-run?cmd=${encodeURIComponent(cmd)}`;
+  _testSource = new EventSource(url);
+
+  _testSource.onmessage = e => {
+    output.textContent += e.data + '\n';
+    output.scrollTop = output.scrollHeight;
+  };
+
+  _testSource.onerror = () => {
+    _testSource.close(); _testSource = null;
+    stopBtn.disabled = true;
+  };
+}
+
+async function testStop() {
+  if (_testSource) { _testSource.close(); _testSource = null; }
+  const stopBtn = document.getElementById('test-stop-btn');
+  if (stopBtn) stopBtn.disabled = true;
+  if (!_selected) return;
+  try {
+    await POST(`/api/services/${enc(_selected.name)}/test-stop`);
+  } catch (e) { statusMsg(e.message, 'err'); }
+}
+
+function closeTestTerminal() {
+  testStop();
+  document.getElementById('test-terminal').hidden = true;
 }
 
 // ── add-section dropdown CSS/menu ─────────────────────────────────────────────

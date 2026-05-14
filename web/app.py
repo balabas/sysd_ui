@@ -4,7 +4,10 @@ import hashlib
 import json
 import os
 import secrets
+import shlex
+import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -462,3 +465,56 @@ def delete(name: str) -> dict:
         return {"ok": True}
     except BackendError as exc:
         _raise(exc)
+
+
+# ── test run ──────────────────────────────────────────────────────────────────
+
+_test_procs: dict[str, subprocess.Popen] = {}
+
+
+@app.get("/api/services/{name}/test-run")
+def test_run(name: str, cmd: str) -> StreamingResponse:
+    if name in _test_procs:
+        try:
+            _test_procs[name].kill()
+        except Exception:
+            pass
+
+    try:
+        args = shlex.split(cmd)
+    except ValueError:
+        args = cmd.split()
+
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    _test_procs[name] = proc
+
+    def generate():
+        yield "data: ▶ " + cmd + "\n\n"
+        try:
+            for line in proc.stdout:
+                escaped = line.rstrip("\n").replace("\\", "\\\\")
+                yield f"data: {escaped}\n\n"
+        except Exception:
+            pass
+        proc.wait()
+        code = proc.returncode
+        yield f"data: ■ exited ({code})\n\n"
+        _test_procs.pop(name, None)
+
+    return StreamingResponse(generate(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/services/{name}/test-stop")
+def test_stop(name: str) -> dict:
+    proc = _test_procs.pop(name, None)
+    if proc:
+        proc.kill()
+        return {"ok": True}
+    return {"ok": False, "detail": "No running test process"}
